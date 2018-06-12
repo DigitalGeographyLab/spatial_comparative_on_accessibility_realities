@@ -148,7 +148,7 @@ class OpenTripPlanerRouterAccessTest(unittest.TestCase):
                                             "tallin_500_grid.geojson")
         outputFolder = os.path.join(os.getcwd(), "output", "plans")
         run(originsFilename=originPointsURL,
-            destinationsFileName=destinationPointsURL,
+            destinationsFilename=destinationPointsURL,
             outputFolder=outputFolder)
 
     @unittest.SkipTest

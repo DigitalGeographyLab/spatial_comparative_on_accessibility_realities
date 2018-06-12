@@ -1,20 +1,18 @@
 import getopt
+import sys
 import traceback
 
 import geopandas as gpd
-import sys
 
-import os
-
-sys.path.append('edu/accessibility/pt_routing')
+sys.path.append('/dgl/codes/spatial_comparative_on_accessibility_realities/')
 
 from src.main.python.edu.accessibility.pt_routing.OpenTripPlanerRouterAccess import OpenTripPlanerRouterAccess
 from src.main.python.edu.accessibility.util.utilitaries import FileActions, WGS_84, Logger
 
 
-def run(originsFilename, destinationsFileName, outputFolder):
+def run(originsFilename, destinationsFilename, outputFolder):
     Logger.getInstance().info("Origins: %s" % originsFilename)
-    Logger.getInstance().info("Destination: %s" % destinationsFileName)
+    Logger.getInstance().info("Destination: %s" % destinationsFilename)
     Logger.getInstance().info("Output: %s" % outputFolder)
 
     fileActions = FileActions()
@@ -23,7 +21,7 @@ def run(originsFilename, destinationsFileName, outputFolder):
     fileActions.createFolder(folderPath=outputFolder)
 
     origins = gpd.read_file(originsFilename)
-    destinations = gpd.read_file(destinationsFileName)
+    destinations = gpd.read_file(destinationsFilename)
     origins = origins.to_crs(WGS_84)
     destinations = destinations.to_crs(WGS_84)
 
