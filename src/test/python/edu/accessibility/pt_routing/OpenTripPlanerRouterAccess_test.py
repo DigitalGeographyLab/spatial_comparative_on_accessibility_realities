@@ -42,8 +42,8 @@ class OpenTripPlanerRouterAccessTest(unittest.TestCase):
 
         origins = gpd.read_file(originPointsURL)
         destinations = gpd.read_file(destinationPointsURL)
-        origins.to_crs(WGS_84)
-        destinations.to_crs(WGS_84)
+        origins = origins.to_crs(WGS_84)
+        destinations = destinations.to_crs(WGS_84)
 
         expected = self.fileActions.readJson(expectedPlanURL)
 
@@ -130,8 +130,8 @@ class OpenTripPlanerRouterAccessTest(unittest.TestCase):
 
         origins = gpd.read_file(originPointsURL)
         destinations = gpd.read_file(destinationPointsURL)
-        origins.to_crs(WGS_84)
-        destinations.to_crs(WGS_84)
+        origins = origins.to_crs(WGS_84)
+        destinations = destinations.to_crs(WGS_84)
 
         self.routerAnalyst.processPlans(
             originPointsDF=origins,
@@ -146,12 +146,15 @@ class OpenTripPlanerRouterAccessTest(unittest.TestCase):
         originPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "tallin_500_grid.geojson")
         destinationPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input",
                                             "tallin_500_grid.geojson")
-        run(originsFilename=originPointsURL, destinationsFileName=destinationPointsURL)
+        outputFolder = os.path.join(os.getcwd(), "output", "plans")
+        run(originsFilename=originPointsURL,
+            destinationsFileName=destinationPointsURL,
+            outputFolder=outputFolder)
 
     @unittest.SkipTest
     def test_add_ids_to_grid(self):
         gridURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "tallin_500_grid.geojson")
-        outputFolder = os.path.join(os.getcwd(), "output", "plans")
+        outputFolder = os.path.join(os.getcwd(), "output")
         origins = gpd.read_file(gridURL)
         origins["ykr_id"] = [x for x in range(0, len(origins), 1)]
         origins.to_file(os.path.join(outputFolder, "tallin_500_grid_ids.geojson"), driver='GeoJSON')

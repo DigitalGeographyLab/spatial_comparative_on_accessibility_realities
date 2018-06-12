@@ -13,7 +13,7 @@ PSEUDO_MERCATOR = {'init': 'EPSG:3857'}
 
 def getConfigurationProperties(section="WFS_CONFIG"):
     config = configparser.ConfigParser()
-    configurationPath = os.path.join(os.getcwd(), "src", "resources", "configuration.properties")
+    configurationPath = os.path.join(os.getcwd(), "src", "main", "resources", "configuration.properties")
     config.read(configurationPath)
     return config[section]
 
@@ -54,6 +54,21 @@ def dgl_timer(func):
 
     return func_wrapper
 
+def parallel_job_print(msg, msg_args):
+    """ Display the message on stout or stderr depending on verbosity
+    """
+    # XXX: Not using the logger framework: need to
+    # learn to use logger better.
+    # if not self.verbose:
+    #     return
+    # if self.verbose < 50:
+    #     writer = sys.stderr.write
+    # else:
+    #     writer = sys.stdout.write
+    msg = msg % msg_args
+    self = "Parallel(n_jobs=%s)" % getConfigurationProperties(section="PARALLELIZATION")["jobs"]
+    # writer('[%s]: %s\n' % (self, msg))
+    Logger.getInstance().info('[%s]: %s' % (self, msg))
 
 class FileActions:
     def readJson(self, url):
@@ -149,3 +164,14 @@ class Logger:
 
     def __del__(self):
         Logger.__instance.clean()
+
+
+class Counter:
+    maxPlansToProcess = 0
+    generalCounter = 0
+
+    @staticmethod
+    def getPercentage():
+        if Counter.maxPlansToProcess == 0:
+            return 0
+        return round(Counter.generalCounter/Counter.maxPlansToProcess, 2) * 100

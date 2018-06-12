@@ -2,9 +2,11 @@ import json
 
 import pandas as pd
 import requests
+from joblib import delayed, Parallel
 
 from src.main.python.edu.accessibility.pt_routing.PostGISServiceProvider import PostGISServiceProvider
-from src.main.python.edu.accessibility.util.utilitaries import dgl_timer, getConfigurationProperties
+from src.main.python.edu.accessibility.util.utilitaries import dgl_timer, getConfigurationProperties, Logger, \
+    parallel_job_print, Counter
 
 
 def createEmptyTravelTimeDataFrame():
@@ -25,6 +27,41 @@ def createEmptyTravelTimeDataFrame():
         "mean_duration_max_boardings",
         "duration_standard_deviation"
     ])
+
+
+def analyseOriginDestination(self, origin, destinationsDF, date, time, worstTime):
+    fastestRoutes = createEmptyTravelTimeDataFrame()
+    for index, destination in destinationsDF.iterrows():
+        plan = self.getRoutePlan(
+            origin=origin.geometry,
+            destination=destination.geometry,
+            time=time,
+            date=date,
+            worstTime=worstTime
+        )
+        if "error" not in plan:
+            fastestRoute = self.getFastestRoute(plan)
+
+            fastestRoute["from_id"] = origin["ykr_id"]
+            fastestRoute["to_id"] = destination["ykr_id"]
+
+            # fastestRoute.to_sql(
+            #     getConfigurationProperties(section="DATABASE_CONFIG")["travel_time_table_name"],
+            #     self.postgresProvider.getEngine(),
+            #     if_exists='append',
+            #     index=False
+            # )
+
+            fastestRoutes = fastestRoutes.append(fastestRoute, ignore_index=True)
+
+            Counter.generalCounter += 1
+            Logger.getInstance().info("Processed %s/%s (%s)" % (
+            Counter.generalCounter, Counter.maxPlansToProcess, Counter.getPercentage()))
+        else:
+            Logger.getInstance().exception(
+                "OTP Error: %s: %s" % (plan["error"]["message"], plan["error"]["msg"])
+            )
+    return fastestRoutes
 
 
 class OpenTripPlanerRouterAccess:
@@ -116,18 +153,24 @@ class OpenTripPlanerRouterAccess:
 
     @dgl_timer
     def processPlans(self, originPointsDF, destinationsPointsDF, time, date, worstTime):
-        for index, origin in originPointsDF.iterrows():
-            for index, destination in destinationsPointsDF.iterrows():
-                plan = self.getRoutePlan(
-                    origin=origin.geometry,
-                    destination=destination.geometry,
-                    time=time,
-                    date=date,
-                    worstTime=worstTime
-                )
+        delayedAnalyseOriginDestination = []
 
-                fastestRoute = self.getFastestRoute(plan)
-                fastestRoute.to_sql(
+        Counter.maxPlansToProcess = len(originPointsDF) * len(destinationsPointsDF)
+
+        for index, origin in originPointsDF.iterrows():
+            # for index, destination in destinationsPointsDF.iterrows():
+            #     destinationsSubsets[count]
+            delayedAnalyseOriginDestination.append(
+                delayed(analyseOriginDestination)(self, origin, destinationsPointsDF, date, time, worstTime))
+
+        with Parallel(n_jobs=int(getConfigurationProperties(section="PARALLELIZATION")["jobs"]),
+                      backend="threading",
+                      verbose=int(getConfigurationProperties(section="PARALLELIZATION")["verbose"])) as parallel:
+            parallel._print = parallel_job_print
+            returns = parallel(tuple(delayedAnalyseOriginDestination))
+
+            for fastestRoutes in returns:
+                fastestRoutes.to_sql(
                     getConfigurationProperties(section="DATABASE_CONFIG")["travel_time_table_name"],
                     self.postgresProvider.getEngine(),
                     if_exists='append',
