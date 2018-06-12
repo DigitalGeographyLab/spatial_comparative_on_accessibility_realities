@@ -38,7 +38,7 @@ if __name__ == "__main__":
     try:
         argv = sys.argv[1:]
         opts, args = getopt.getopt(
-            argv, "s:e:o",
+            argv, "s:e:o:",
             ["origin_points=", "destination_points=", "output_folder="]
         )
 
@@ -54,10 +54,10 @@ if __name__ == "__main__":
             # print("options: %s, arg: %s" % (opt, arg))
 
             if opt in ("-s", "--origin_points"):
-                startPointsGeojsonFilename = arg
+                originsFilename = arg
 
             if opt in ("-e", "--destination_points"):
-                endPointsGeojsonFilename = arg
+                destinationsFilename = arg
 
             if opt in ("-o", "--output_folder"):
                 outputFolder = arg
