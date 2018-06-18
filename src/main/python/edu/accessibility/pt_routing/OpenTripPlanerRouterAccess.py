@@ -2,11 +2,12 @@ import json
 
 import pandas as pd
 import requests
+import time
 from joblib import delayed, Parallel
 
 from src.main.python.edu.accessibility.pt_routing.PostGISServiceProvider import PostGISServiceProvider
 from src.main.python.edu.accessibility.util.utilitaries import dgl_timer, getConfigurationProperties, Logger, \
-    parallel_job_print, Counter
+    parallel_job_print, Counter, timeDifference, getFormattedDatetime
 
 
 def createEmptyTravelTimeDataFrame():
@@ -29,16 +30,23 @@ def createEmptyTravelTimeDataFrame():
     ])
 
 
-def analyseOriginDestination(self, origin, destinationsDF, date, time, worstTime):
+def analyseOriginDestination(self, origin, destinationsDF, date, _time, worstTime):
+    # startTime = time.time()
+    # functionName = "analyseOriginDestination"
+    # Logger.getInstance().info("%s Start Time: %s" % (functionName, getFormattedDatetime(timemilis=startTime)))
+
     fastestRoutes = createEmptyTravelTimeDataFrame()
     for index, destination in destinationsDF.iterrows():
         plan = self.getRoutePlan(
             origin=origin.geometry,
             destination=destination.geometry,
-            time=time,
+            time=_time,
             date=date,
             worstTime=worstTime
         )
+
+        Counter.generalCounter += 1
+
         if "error" not in plan:
             fastestRoute = self.getFastestRoute(plan)
 
@@ -54,13 +62,25 @@ def analyseOriginDestination(self, origin, destinationsDF, date, time, worstTime
 
             fastestRoutes = fastestRoutes.append(fastestRoute, ignore_index=True)
 
-            Counter.generalCounter += 1
-            Logger.getInstance().info("Processed %s/%s (%s)" % (
-            Counter.generalCounter, Counter.maxPlansToProcess, Counter.getPercentage()))
+            Counter.processedCounter += 1
+
+            Logger.getInstance().info("General: %s/%s (%s), Processed: %s/%s (%s)" % (
+                Counter.generalCounter, Counter.maxPlansToProcess, Counter.getGeneralPercentage(),
+                Counter.processedCounter, Counter.maxPlansToProcess, Counter.getProcessedPercentage()))
         else:
+            Counter.errorsCounter += 1
+
             Logger.getInstance().exception(
-                "OTP Error: %s: %s" % (plan["error"]["message"], plan["error"]["msg"])
+                "OTP Error: %s: %s. (%s/%s, %s)" % (plan["error"]["message"], plan["error"]["msg"],
+                                                    Counter.errorsCounter, Counter.maxPlansToProcess,
+                                                    Counter.getErrorPercentage())
             )
+
+    # endTime = time.time()
+    # Logger.getInstance().info("%s End Time: %s" % (functionName, getFormattedDatetime(timemilis=endTime)))
+    #
+    # totalTime = timeDifference(startTime, endTime)
+    # Logger.getInstance().info("%s Total Time: %s m" % (functionName, totalTime))
     return fastestRoutes
 
 
@@ -78,7 +98,7 @@ class OpenTripPlanerRouterAccess:
             'time': time,  # '1:02pm'
             'date': date,  # mm-dd-yyyy
             'mode': 'TRANSIT,WALK',
-            'maxWalkDistance': 1000,
+            'maxWalkDistance': 5000,
             'maxHours': 3,
             'worstTime': worstTime,
             'numItineraries': 100,

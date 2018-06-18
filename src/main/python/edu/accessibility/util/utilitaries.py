@@ -169,9 +169,23 @@ class Logger:
 class Counter:
     maxPlansToProcess = 0
     generalCounter = 0
+    processedCounter = 0
+    errorsCounter = 0
 
     @staticmethod
-    def getPercentage():
+    def getGeneralPercentage():
         if Counter.maxPlansToProcess == 0:
             return 0
         return round(Counter.generalCounter/Counter.maxPlansToProcess, 2) * 100
+
+    @staticmethod
+    def getProcessedPercentage():
+        if Counter.maxPlansToProcess == 0:
+            return 0
+        return round(Counter.processedCounter/Counter.maxPlansToProcess, 2) * 100
+
+    @staticmethod
+    def getErrorPercentage():
+        if Counter.maxPlansToProcess == 0:
+            return 0
+        return round(Counter.errorsCounter/Counter.maxPlansToProcess, 2) * 100
