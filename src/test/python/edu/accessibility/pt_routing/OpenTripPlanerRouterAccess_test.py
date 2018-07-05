@@ -143,8 +143,8 @@ class OpenTripPlanerRouterAccessTest(unittest.TestCase):
 
     # @unittest.SkipTest
     def test_run(self):
-        originPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "tallinn_500_points.geojson")
-        destinationPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input",
+        originPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "Tallinn", "tallinn_500_points.geojson")
+        destinationPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "Tallinn",
                                             "tallinn_isolated_point.geojson")
         outputFolder = os.path.join(os.getcwd(), "output", "plans")
         run(originsFilename=originPointsURL,
@@ -153,7 +153,7 @@ class OpenTripPlanerRouterAccessTest(unittest.TestCase):
 
     @unittest.SkipTest
     def test_add_ids_to_grid(self):
-        gridURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "tallin_500_grid.geojson")
+        gridURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "Tallinn", "tallin_500_grid.geojson")
         outputFolder = os.path.join(os.getcwd(), "output")
         origins = gpd.read_file(gridURL)
         origins["ykr_id"] = [x for x in range(0, len(origins), 1)]

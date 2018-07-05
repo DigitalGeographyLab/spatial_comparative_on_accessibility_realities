@@ -35,9 +35,8 @@ from shapely.wkt import loads
 from shapely import prepared
 from fiona.crs import from_epsg
 import matplotlib.pyplot as plt
-from codes.DORA.digiroad_time_penalties import penalties as pns
-from codes.DORA.src.connection.PostgresServiceProvider import PostGISServiceProvider
-from codes.DORA.src.util import GPD_CRS, GeometryType
+from src.main.python.edu.accessibility.car_routing.digiroad_time_penalties import penalties as pns
+# from codes.DORA.src.util import GPD_CRS, GeometryType
 
 counter = 1
 
