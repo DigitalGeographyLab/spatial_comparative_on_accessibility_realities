@@ -119,7 +119,7 @@ class OpenTripPlanerRouterAccessTest(unittest.TestCase):
         print(fastestRoute)
         assert_frame_equal(expectedFastestRoute, fastestRoute)
 
-    @unittest.SkipTest
+    # @unittest.SkipTest
     def test_givenASetOfOriginAndDestinationPoints_then_processPlans(self):
         originPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "westPoint.geojson")
         destinationPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input",
@@ -143,9 +143,9 @@ class OpenTripPlanerRouterAccessTest(unittest.TestCase):
 
     # @unittest.SkipTest
     def test_run(self):
-        originPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "tallin_500_grid.geojson")
+        originPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input", "tallinn_500_points.geojson")
         destinationPointsURL = os.path.join(os.getcwd(), "src", "test", "resources", "input",
-                                            "tallin_500_grid.geojson")
+                                            "tallinn_isolated_point.geojson")
         outputFolder = os.path.join(os.getcwd(), "output", "plans")
         run(originsFilename=originPointsURL,
             destinationsFilename=destinationPointsURL,

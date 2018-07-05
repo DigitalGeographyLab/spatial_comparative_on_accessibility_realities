@@ -30,10 +30,10 @@ def createEmptyTravelTimeDataFrame():
     ])
 
 
-def analyseOriginDestination(self, origin, destinationsDF, date, _time, worstTime):
-    # startTime = time.time()
-    # functionName = "analyseOriginDestination"
-    # Logger.getInstance().info("%s Start Time: %s" % (functionName, getFormattedDatetime(timemilis=startTime)))
+def analyseOriginDestination(self, origin, destinationsDF, date, _time, worstTime, logger):
+    startTime = time.time()
+    functionName = "analyseOriginDestination"
+    logger.info("%s Start Time: %s" % (functionName, getFormattedDatetime(timemilis=startTime)))
 
     fastestRoutes = createEmptyTravelTimeDataFrame()
     for index, destination in destinationsDF.iterrows():
@@ -64,23 +64,23 @@ def analyseOriginDestination(self, origin, destinationsDF, date, _time, worstTim
 
             Counter.processedCounter += 1
 
-            Logger.getInstance().info("General: %s/%s (%s), Processed: %s/%s (%s)" % (
+            logger.info("General: %s/%s (%s), Processed: %s/%s (%s)" % (
                 Counter.generalCounter, Counter.maxPlansToProcess, Counter.getGeneralPercentage(),
                 Counter.processedCounter, Counter.maxPlansToProcess, Counter.getProcessedPercentage()))
         else:
             Counter.errorsCounter += 1
 
-            Logger.getInstance().exception(
+            logger.exception(
                 "OTP Error: %s: %s. (%s/%s, %s)" % (plan["error"]["message"], plan["error"]["msg"],
                                                     Counter.errorsCounter, Counter.maxPlansToProcess,
                                                     Counter.getErrorPercentage())
             )
 
-    # endTime = time.time()
-    # Logger.getInstance().info("%s End Time: %s" % (functionName, getFormattedDatetime(timemilis=endTime)))
-    #
-    # totalTime = timeDifference(startTime, endTime)
-    # Logger.getInstance().info("%s Total Time: %s m" % (functionName, totalTime))
+    endTime = time.time()
+    logger.info("%s End Time: %s" % (functionName, getFormattedDatetime(timemilis=endTime)))
+
+    totalTime = timeDifference(startTime, endTime)
+    logger.info("%s Total Time: %s m" % (functionName, totalTime))
     return fastestRoutes
 
 
@@ -181,7 +181,8 @@ class OpenTripPlanerRouterAccess:
             # for index, destination in destinationsPointsDF.iterrows():
             #     destinationsSubsets[count]
             delayedAnalyseOriginDestination.append(
-                delayed(analyseOriginDestination)(self, origin, destinationsPointsDF, date, time, worstTime))
+                delayed(analyseOriginDestination)(self, origin.copy(), destinationsPointsDF.copy(), date, time, worstTime,
+                                                  Logger.getInstance()))
 
         with Parallel(n_jobs=int(getConfigurationProperties(section="PARALLELIZATION")["jobs"]),
                       backend="threading",
