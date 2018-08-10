@@ -41,6 +41,42 @@ from src.main.python.edu.accessibility.car_routing.digiroad_time_penalties impor
 
 # from codes.DORA.src.util import GPD_CRS, GeometryType
 
+# Walking speed (km/h)
+walking_speed = 4
+roadTypesDict = {
+    "trunk": 90,
+    "motorway_link": 80,
+    "primary": 70,
+    "secondary": 60,
+    "tertiary": 50,
+    "trunk_link": 60,
+    "primary_link": 50,
+    "secondary_link": 50,
+    "tertiary_link": 50,
+    "residential": 40,
+    "road": 40,
+    "unclassified": 20,
+    "living_street": 20,
+    "yes": 20,
+    "service": 10,
+    "_others_": 4,
+    ### Other kind of roads
+    "track": walking_speed,
+    "bridleway": walking_speed,
+    "bus_stop": walking_speed,
+    "corridor": walking_speed,
+    "cycleway": walking_speed,
+    "elevator": walking_speed,
+    "escalator": walking_speed,
+    "footway": walking_speed,
+    "motorway": walking_speed,
+    "path": walking_speed,
+    "pedestrian": walking_speed,
+    "planned": walking_speed,
+    "steps": walking_speed,
+    "trail": walking_speed,
+    "virtual": walking_speed
+}
 counter = 1
 
 
@@ -99,9 +135,9 @@ def associateSpeedLimitInformation(row, speed_limit_col, road_type_col, target_c
         #     row[target_col] = 40
         # elif row[road_type_col] == 8:
         #     row[target_col] = walking_speed
-        if (row[road_type_col] == "trunk"):
+        if row[road_type_col] == "trunk":
             row[target_col] = 90
-        elif (row[road_type_col] == "motorway_link"):
+        elif row[road_type_col] == "motorway_link":
             row[target_col] = 80
         elif row[road_type_col] == "primary":
             row[target_col] = 70
@@ -114,12 +150,13 @@ def associateSpeedLimitInformation(row, speed_limit_col, road_type_col, target_c
                 or (row[road_type_col] == "secondary_link"):
             row[target_col] = 50
 
-        elif (row[road_type_col] == "residential") or (row[road_type_col] == "road") \
-                or (row[road_type_col] == "unclassified"):
+        elif (row[road_type_col] == "residential") or (row[road_type_col] == "road"):
             row[target_col] = 40
-        elif row[road_type_col] == "living_street" or (row[road_type_col] == "yes"):
+        elif row[road_type_col] == "living_street" or (row[road_type_col] == "yes") or \
+                 (row[road_type_col] == "unclassified"):
             row[target_col] = 20
-        # elif row[road_type_col] == 8:
+        elif row[road_type_col] == "service":
+            row[target_col] = 10
         else:
             row[target_col] = walking_speed
     return row
@@ -250,6 +287,7 @@ def get_edges(graph):
     # create a GeoDataFrame from the list of edges and set the CRS
     gdf_edges = gpd.GeoDataFrame(edges)
     gdf_edges.crs = G.graph["crs"]
+    gdf_edges = gdf_edges.reset_index()
     return gdf_edges
 
 
@@ -384,7 +422,7 @@ def get_paths_to_simplify(G, strict=True):
     return paths_to_simplify
 
 
-def simplify_graph(G, strict=True, speed_limit_col='KmH', length_col='length'):
+def simplify_graph(G, strict=True, speed_limit_col='KmH', length_col='length', find_speed_limit_mode=False):
     """
     Simplify a graph's topology by removing all nodes that are not intersections
     or dead-ends.
@@ -431,7 +469,10 @@ def simplify_graph(G, strict=True, speed_limit_col='KmH', length_col='length'):
                 else:
                     edge_attributes[key] = unique
             else:
-                edge_attributes[key] = values
+                if find_speed_limit_mode and (key == speed_limit_col):
+                    edge_attributes[key] = getSpeedHigherModeValue(values)
+                else:
+                    edge_attributes[key] = unique
 
         # construct the geometry and calculate the total length of the merged segments
         edge_attributes['geometry'] = ops.linemerge(
@@ -827,9 +868,14 @@ def calculate_penalties(gdf, penalties, avg='avg', midd='m', rush='r', median='m
     return data
 
 
-def getSpeed(row, speedColumn):
+def getSpeedFromRow(row, speedColumn):
     speeds = row[speedColumn]
-    speed = 4  # walking_speed
+    speed = getSpeedHigherModeValue(speeds)
+    return speed
+
+
+def getSpeedHigherModeValue(speeds):
+    speed = None  # default_value  # walking_speed
     if isinstance(speeds, list):
         if len(speeds) == len(set(speeds)):
             medianPos = len(speeds) / 2
@@ -839,72 +885,108 @@ def getSpeed(row, speedColumn):
             else:
                 medianPos = medianPosInt
 
+            newSpeed = pd.to_numeric(speeds)
+            speeds = newSpeed[newSpeed > 0]
+            nulls = [0] * len(newSpeed[pd.isnull(newSpeed)])
+            speeds = np.append(speeds, nulls)
+
+            speeds = speeds.astype(int)
+
             sortedSpeeds = sorted(speeds)
             speed = sortedSpeeds[medianPos]
         else:
+            newSpeed = pd.to_numeric(speeds)
+            speeds = newSpeed[newSpeed > 0]
+            nulls = [0] * len(newSpeed[pd.isnull(newSpeed)])
+            speeds = np.append(speeds, nulls)
+
+            speeds = speeds.astype(int)
+
             speedsCount = list(reversed(np.bincount(speeds)))
             speed = len(speedsCount) - np.array(speedsCount).argmax() - 1
-            if speed < 0:
-                speed = 4
+            if speed <= 0:
+                speed = None
+
 
     else:
-        speed = int(speeds)
+        if speeds is None:
+            speed = None
+        else:
+            speed = int(speeds)
+
+    if speed == 0:
+        speed = None
 
     return speed
 
-def getHighway(row, highwayColumn, speedColumn):
+def columnsWithOneValue(row, known_speed_limit_column):
+    row["maxspeed"] = getSpeedHigherModeValue(row["maxspeed"])
+    row = processHighway(row, "highway", known_speed_limit_column)
+    row = processJunction(row, "junction")
+    return row
+
+def processHighway(row, highwayColumn, speedColumn):
     highways = row[highwayColumn]
-
-    roadTypesDict = {
-        "trunk": 90,
-        "motorway_link": 80,
-        "primary": 70,
-        "secondary":  60,
-        "tertiary": 50,
-        "trunk_link": 60,
-        "primary_link": 50,
-        "secondary_link": 50,
-        "tertiary_link": 50,
-        "residential": 40,
-        "road": 40,
-        "unclassified": 40,
-        "living_street": 20,
-        "yes": 20,
-        "_others_": 4
-    }
-
-    highwaySelected = "unclassified"
+    highwaySelected = None
     if isinstance(highways, list):
-        speed = row[speedColumn]
 
+        speed = row[speedColumn]
         for highway in highways:
             if roadTypesDict[highway] == speed:
                 highwaySelected = highway
                 break
 
-        # if len(highways) == len(set(highways)):
-        #     medianPos = len(highways) / 2
-        #     medianPosInt = int(len(highways) / 2)
-        #     if len(highways) > 2 and (medianPos - medianPosInt) == 0:
-        #         medianPos = int(medianPos) + 1
-        #     else:
-        #         medianPos = medianPosInt
-        #
-        #     sortedSpeeds = sorted(highways)
-        #     highway = sortedSpeeds[medianPos]
-        # else:
-        #     speedsCount = list(reversed(np.bincount(highways)))
-        #     highway = len(speedsCount) - np.array(speedsCount).argmax() - 1
-        #     if highway < 0:
-        #         highway = 4
-
     else:
         highwaySelected = highways
 
-    return highwaySelected
+    if highwaySelected is None:
+        highwaySelected = "unclassified"
+
+    row[highwayColumn] = highwaySelected
+    return row
+
+def processJunction(row, junctionColumn):
+    subJunctions = row[junctionColumn]
+    junctionSelected = None
+    junctionDict = {
+        0: None
+    }
+    junctionDict2 = {
+        "None": 0
+    }
+    junctionCounter = 1
+
+    if subJunctions is not None:
+        if isinstance(subJunctions, list):
+            subJunctions = np.array(subJunctions)
+            junctionList = subJunctions[~pd.isnull(subJunctions)]
+            nulls = [0] * len(subJunctions[pd.isnull(subJunctions)])
+            if len(nulls) != len(subJunctions):
+                junctions = list(set(junctionList))
+                for junction in junctions:
+                    if junction not in junctionDict:
+                        junctionDict[junctionCounter] = junction
+                        junctionDict2[junction] = junctionCounter
+                        junctionCounter += 1
+
+                newList = []
+                for junction in junctionList:
+                    newList.append(junctionDict2[junction])
+
+                allJunctionList = np.append(newList, nulls)
+
+                junctionsCount = list(reversed(np.bincount(allJunctionList)))
+                junctionPosition = len(junctionsCount) - np.array(junctionsCount).argmax() - 1
+
+                junctionSelected = junctionDict[junctionPosition]
+        else:
+            junctionSelected = subJunctions
+
+    row[junctionColumn] = junctionSelected
+    return row
+
 
 def checkRowValueTypes(data):
-
     # columns = ["ShpName", "KmH", "freeflow", "geometry", "highway", "jtype1", "jtype2", "jtype3", "jtype4", "jtype5",
     #            "junction", "length", "maxspeed", "new_length", "old_osmid", "oneway", "osmid", "x", "y"]
     indexes = []
@@ -938,15 +1020,17 @@ def checkRowValueTypes(data):
 
     return indexes, columnsAreList
 
+
 def main():
     # =================
     # File paths
     # =================
     # def main():
     data_folder = r"C:\Users\jeisonle\repository\HelsinkiRegionTravelTimeMatrix2018\data\accessibility\helsinki"
-    link_fp = os.path.join(data_folder, "slip_roads", "helsinki_all_edges.shp")
-    limits_fp = os.path.join(data_folder, "slip_roads", "helsinki_all_edges.shp")
-    signals_fp = os.path.join(data_folder, "slip_roads", "helsinki_all_nodes.shp")
+    sub_folder = "with_services"
+    link_fp = os.path.join(data_folder, sub_folder, "helsinki_all_edges.shp")
+    # limits_fp = os.path.join(data_folder, sub_folder, "helsinki_all_edges.shp")
+    signals_fp = os.path.join(data_folder, sub_folder, "helsinki_all_nodes.shp")
 
     # =============================
     # Parameters & attribute names
@@ -954,9 +1038,6 @@ def main():
 
     # Coordinate reference system of the source data
     epsg_code = 3067
-
-    # Walking speed (km/h)
-    walking_speed = 4
 
     # Existing attributes
     known_speed_limit_column = 'maxspeed'
@@ -972,13 +1053,37 @@ def main():
     # =================
 
     print("Read files ..")
-    edges = gpd.read_file(link_fp)
-    limits = gpd.read_file(limits_fp)
-    signals = gpd.read_file(signals_fp)
+    # edges = gpd.read_file(link_fp)
+    # limits = gpd.read_file(limits_fp)
 
-    edges = edges.to_crs({'init': 'epsg:3067'})
-    limits = limits.to_crs({'init': 'epsg:3067'})
-    signals = signals.to_crs({'init': 'epsg:3067'})
+
+    epsg_3067 = {'init': 'epsg:3067'}
+    epsg_wsg84 = {'init': 'epsg:4326'}
+
+    G = generateGraphFromDigiroadShape(link_fp, epsg_wsg84)
+    # G = nx.read_shp(link_fp, simplify=False)
+    G = simplify_graph(G, speed_limit_col="maxspeed", length_col="length", find_speed_limit_mode=True)
+    # G2 = G.copy()
+    # G = ox.simplify_graph(G)
+    edges = get_edges(G)
+    # edges = ox.save_load.graph_to_gdfs(G, nodes=False, edges=True, node_geometry=False, fill_edge_geometry=True)
+
+    #####
+    # edges = edges.head(30).append(edges.tail(30))
+    # edges = edges.loc["unclassified"]
+    #####
+
+    edges = edges.to_crs(epsg_3067)
+    # edges = edges[["highway", "junction", "length", "maxspeed", "oneway", "service", "geometry"]]
+    # edges = edges[["highway", "junction", "maxspeed", "oneway", "geometry"]]
+    # edges["highway"] = edges.apply(lambda row: getHighway(row, "highway", known_speed_limit_column), axis=1)
+    edges = edges.apply(lambda row: columnsWithOneValue(row, known_speed_limit_column), axis=1)
+    edges = edges[["highway", "junction", "maxspeed", "oneway", "geometry"]]
+    edges.crs = epsg_3067
+    edges["osmid"] = range(1, len(edges) + 1, 1)
+
+    # limits = edges.copy(deep=True)
+
 
     # """TO CHECK"""
     # indexes, columns = checkRowValueTypes(signals)
@@ -986,30 +1091,13 @@ def main():
     # print("Columns: ", columns)
     # """END CHECKING"""
 
-    edges["old_osmid"] = edges["osmid"]
-    limits["old_osmid"] = limits["osmid"]
-    signals["old_osmid"] = signals["osmid"]
-
-    edges["osmid"] = range(1, len(edges) + 1, 1)
-    limits["osmid"] = range(1, len(limits) + 1, 1)
-    signals["osmid"] = range(1, len(signals) + 1, 1)
-
     # remove not drivable nor walking paths
     edges = edges.loc[
-        ~(edges["highway"] == "cycleway") &
-        ~(edges["highway"] == "service")
+        # ~(edges["highway"] == "cycleway") &
+        # ~(edges["highway"] == "service")
+        ~(edges["highway"] == "cycleway")
         ]
-    edges = edges[["osmid", "old_osmid", "highway", "junction", "length", "oneway", "maxspeed", "geometry"]]
-
-    # limits = limits.loc[
-    #     ~(limits["highway"] == "cycleway") &
-    #     ~(limits["highway"] == "service")
-    #     ]
-    # limits = limits[["osmid", "maxspeed", "geometry"]]
     edges[known_speed_limit_column] = pd.to_numeric(edges[known_speed_limit_column])
-
-    signals = signals.loc[signals["highway"] == "traffic_signals"]
-    signals = signals[["osmid", "old_osmid", "highway", "geometry"]]
 
     # ===============================
     # Assign speed limit information
@@ -1033,43 +1121,57 @@ def main():
 
     # Save data without walking parts as a temporary file
     temp_fp = link_fp.replace('.shp', '_temp.shp')
+
+    # print(checkRowValueTypes(data))
+
     data.to_file(temp_fp)
 
     print("Generate graph..")
     # Generate graph from the roads 
-    G1 = generateGraphFromDigiroadShape(temp_fp, data.crs)
+    G = generateGraphFromDigiroadShape(temp_fp, data.crs) # G = nx.read_shp(temp_fp, simplify=False)
 
-    networkType = 'all'
+
+    # networkType = 'all'
     # west, south, east, north = 24.522766, 59.311105, 25.012344, 59.57849  # Tallinn, Estonia, same as the geojson 'links_fp'
     # G = ox.graph_from_bbox(north, south, east, west, network_type=networkType, simplify=False)
-    helsinkiPolygonFile = gpd.read_file(
-        r"C:\Users\jeisonle\Documents\Digital Geography Lab\Thesis\Helsinki\Road Network\helsinki_polygon_buffered.shp")
-    helsinkiPolygon = helsinkiPolygonFile["geometry"].iloc[0]
+    # helsinkiPolygonFile = gpd.read_file(
+    #     r"C:\Users\jeisonle\Documents\Digital Geography Lab\Thesis\Helsinki\Road Network\helsinki_polygon_buffered.shp")
+    # helsinkiPolygon = helsinkiPolygonFile["geometry"].iloc[0]
 
-    G = ox.graph_from_polygon(helsinkiPolygon, network_type=networkType, simplify=False)
-    G_projected = ox.project_graph(G)
+    # G = ox.graph_from_polygon(helsinkiPolygon, network_type=networkType, simplify=False)
+    # G_projected = ox.project_graph(G)
 
     # print("Simplify graph ..")
     # # Generate graph with only intersection and ending nodes and the edges between them
-    sgraph1 = simplify_graph(G1)
-    sgraph = G.copy()
-    sgraph = ox.simplify_graph(sgraph)
-    sgraph_temp = sgraph.copy()
+    # sgraph1 = simplify_graph(G1)
+    # sgraph = G.copy()
+    # sgraph = ox.simplify_graph(sgraph)
+    # sgraph_temp = sgraph.copy()
+    sgraph = simplify_graph(G)
 
     # Get nodes and edges
-    sn = get_nodes(sgraph1)
-    se = get_edges(sgraph1)
+    sn = get_nodes(sgraph)
+    se = get_edges(sgraph)
+    # sn.crs = epsg_wsg84
+    sn = sn.to_crs(epsg_3067)
     # sn, se = ox.save_load.graph_to_gdfs(sgraph1, nodes=True, edges=True,
     #                                     node_geometry=True, fill_edge_geometry=True)
 
     # Calculate the number of connections
-    sn = calculate_node_connections(df=sn, graph=sgraph1)
+    sn = calculate_node_connections(df=sn, graph=sgraph)
 
     # Select intersections
     intersections = sn.loc[sn['connections'] > 1]
 
     print("Detect traffic lights ..")
     # Detect intersections that are within 20 meters from traffic signals
+    signals = gpd.read_file(signals_fp)
+    signals = signals.to_crs(epsg_3067)
+
+    signals["old_osmid"] = signals["osmid"]
+    signals["osmid"] = range(1, len(signals) + 1, 1)
+    signals = signals.loc[signals["highway"] == "traffic_signals"]
+    signals = signals[["osmid", "old_osmid", "highway", "geometry"]]
     signals['buffer'] = signals.buffer(20)
     signals = signals.set_geometry('buffer')
 
@@ -1099,66 +1201,68 @@ def main():
         (data['highway'] == "tertiary_link")
         ]
     #####
-    data = data.loc[~data.index.isin(set(list(slip_road_edges.index)))]  # remove slip road edges, must be re-appended.
-    slipRoadTempFile = os.path.join(data_folder, "slip_roads", "slipRoadsTemp.shp")
-    slip_road_edges.to_file(slipRoadTempFile)
-    G_slipRoads = generateGraphFromDigiroadShape(slipRoadTempFile, slip_road_edges.crs)
-    print("Simplifying slip roads")
-    sgraph_slipRoads = simplify_graph(G_slipRoads)
+    # data = data.loc[~data.index.isin(set(list(slip_road_edges.index)))]  # remove slip road edges, must be re-appended.
+    # slipRoadTempFile = os.path.join(data_folder, sub_folder, "slipRoadsTemp.shp")
+    # slip_road_edges.to_file(slipRoadTempFile)
+    # G_slipRoads = generateGraphFromDigiroadShape(slipRoadTempFile, slip_road_edges.crs)
+    # print("Simplifying slip roads")
+    # sgraph_slipRoads = simplify_graph(G_slipRoads)
     # Get nodes and edges
-    sn = get_nodes(sgraph_slipRoads)
-    se = get_edges(sgraph_slipRoads)
+    # sn = get_nodes(sgraph_slipRoads)
+    # se = get_edges(sgraph_slipRoads)
 
-    old_speed_column = "old_%s" % allocated_speed_limit_column
-    new_speed_column = "new_%s" % allocated_speed_limit_column
-    se = se.rename(index=str, columns={allocated_speed_limit_column: old_speed_column})
-    se[new_speed_column] = se.apply(lambda row: getSpeed(row, old_speed_column), axis=1)
-    se = se.drop([known_speed_limit_column], axis=1)
-    se = se.rename(index=str, columns={new_speed_column: known_speed_limit_column})
-    se = se.drop([old_speed_column], axis=1)
+    # old_speed_column = "old_%s" % allocated_speed_limit_column
+    # new_speed_column = "new_%s" % allocated_speed_limit_column
+    # se = se.rename(index=str, columns={allocated_speed_limit_column: old_speed_column})
+    # se[new_speed_column] = se.apply(lambda row: getSpeedFromRow(row, old_speed_column), axis=1)
+    # se = se.drop([known_speed_limit_column], axis=1)
+    # se = se.rename(index=str, columns={new_speed_column: known_speed_limit_column})
+    # se = se.drop([old_speed_column], axis=1)
 
-    se["highway"] = se.apply(lambda row: getHighway(row, "highway", known_speed_limit_column), axis=1)
+    # se["highway"] = se.apply(lambda row: getHighway(row, "highway", known_speed_limit_column), axis=1)
 
-    print("Columns slip roads DF: ", se.columns)
+    # print("Columns slip roads DF: ", se.columns)
 
-    slip_road_edges = process_speed_limits(link_gdf=se,
-                                           # limit_gdf=limits,
-                                           known_speed_limit_col=known_speed_limit_column,
-                                           speed_limit_col=allocated_speed_limit_column,
-                                           road_type_col=road_type_column)
-
-    temp_signal_edges = slip_road_edges.loc[slip_road_edges.touches(signal_geom)]
-    temp_signal_edges = temp_signal_edges.assign(jtype1=1)
-    slip_road_edges = slip_road_edges.merge(temp_signal_edges[['jtype1']],
-                                            # on="osmid",
-                                            left_index=True,
-                                            right_index=True,
-                                            how="left"
-                                            )
+    # slip_road_edges = process_speed_limits(link_gdf=se,
+    #                                        # limit_gdf=limits,
+    #                                        known_speed_limit_col=known_speed_limit_column,
+    #                                        speed_limit_col=allocated_speed_limit_column,
+    #                                        road_type_col=road_type_column)
+    #
+    # temp_signal_edges = slip_road_edges.loc[slip_road_edges.touches(signal_geom)]
+    # temp_signal_edges = temp_signal_edges.assign(jtype1=1)
+    # slip_road_edges = slip_road_edges.merge(temp_signal_edges[['jtype1']],
+    #                                         # on="osmid",
+    #                                         left_index=True,
+    #                                         right_index=True,
+    #                                         how="left"
+    #                                         )
     #####
 
 
     print("Detect other edges ..")
     # Select all other types of edges
-    assigned_edges = list(set(list(pedestrian_edges.index) + list(signal_edges.index)))  # slip roads are removed in previous analysis
+    assigned_edges = list(
+        set(list(pedestrian_edges.index) + list(signal_edges.index) + list(slip_road_edges.index)))  # slip roads are removed in previous analysis
     other_edges = data.loc[~data.index.isin(assigned_edges)]
 
     # Assign flags for different junction types
     signal_edges = signal_edges.assign(jtype1=1)
     other_edges = other_edges.assign(jtype2=1)
-    slip_road_edges = slip_road_edges.assign(
-        jtype2=0, jtype3=1, jtype4=0,
-        ShpName=-1, length=-1, osmid=-1, old_osmid=-1, x=-1, y=-1
-    )
+    slip_road_edges = slip_road_edges.assign(jtype3=1)
+    # slip_road_edges = slip_road_edges.assign(
+    #     jtype2=0, jtype3=1, jtype4=0,
+    #     ShpName=-1, length=-1, osmid=-1, old_osmid=-1, x=-1, y=-1
+    # )
     pedestrian_edges = pedestrian_edges.assign(jtype4=1)
 
     # Combine and assign junction types for all edges
     join = data.merge(signal_edges[['jtype1', 'osmid']], on="osmid", how="left")
     join = join.merge(other_edges[['jtype2', 'osmid']], on='osmid', how='left')
-    # join = join.merge(slip_road_edges[['jtype3', 'osmid']], on='osmid', how='left')
+    join = join.merge(slip_road_edges[['jtype3', 'osmid']], on='osmid', how='left')
     join = join.merge(pedestrian_edges[['jtype4', 'osmid']], on='osmid', how='outer')
 
-    join = join.append(slip_road_edges, ignore_index=True)
+    # join = join.append(slip_road_edges, ignore_index=True)
 
     # Fill NaN in junction types with 0
     jtype_cols = ['jtype1', 'jtype2', 'jtype3', 'jtype4']
@@ -1186,7 +1290,7 @@ def main():
     result = calculate_penalties(
         gdf=join, penalties=pns, element_type="highway",
         slip_road_code=["motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"],
-        roundabout_code=["roundabout"]
+        roundabout_code=["roundabout", "circular"]
     )
 
     # ==========================
