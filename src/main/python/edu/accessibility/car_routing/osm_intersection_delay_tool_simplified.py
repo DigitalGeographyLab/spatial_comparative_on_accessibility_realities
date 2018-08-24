@@ -921,11 +921,12 @@ def getSpeedHigherModeValue(speeds):
 
 def columnsWithOneValue(row, known_speed_limit_column):
     row["maxspeed"] = getSpeedHigherModeValue(row["maxspeed"])
-    row = processHighway(row, "highway", known_speed_limit_column)
-    row = processJunction(row, "junction")
+    row = processHighwayTag(row, "highway", known_speed_limit_column)
+    row = processJunctionTag(row, "junction")
+    row = processAccessTag(row, "access")
     return row
 
-def processHighway(row, highwayColumn, speedColumn):
+def processHighwayTag(row, highwayColumn, speedColumn):
     highways = row[highwayColumn]
     highwaySelected = None
     if isinstance(highways, list):
@@ -945,7 +946,7 @@ def processHighway(row, highwayColumn, speedColumn):
     row[highwayColumn] = highwaySelected
     return row
 
-def processJunction(row, junctionColumn):
+def processJunctionTag(row, junctionColumn):
     subJunctions = row[junctionColumn]
     junctionSelected = None
     junctionDict = {
@@ -983,6 +984,25 @@ def processJunction(row, junctionColumn):
             junctionSelected = subJunctions
 
     row[junctionColumn] = junctionSelected
+    return row
+
+def processAccessTag(row, accessColumn):
+    access = row[accessColumn]
+    newAccess = None
+    restrictedAccess = ["no", "private", "destination", "delivery", "customers", "dismount", "agriculture", "forestry", "discouraged"]
+    if isinstance(access, list):
+        for inAccess in access:
+            if inAccess is not None:
+                newAccess = inAccess
+                if inAccess in restrictedAccess:
+                    newAccess = "no"
+                    break
+        pass
+    else:
+        if (access is not None) and access in restrictedAccess:
+            newAccess = "no"
+
+    row[accessColumn] = newAccess
     return row
 
 
@@ -1078,7 +1098,6 @@ def main():
     # edges = edges[["highway", "junction", "maxspeed", "oneway", "geometry"]]
     # edges["highway"] = edges.apply(lambda row: getHighway(row, "highway", known_speed_limit_column), axis=1)
     edges = edges.apply(lambda row: columnsWithOneValue(row, known_speed_limit_column), axis=1)
-    edges = edges[["highway", "junction", "maxspeed", "oneway", "geometry"]]
     edges.crs = epsg_3067
     edges["osmid"] = range(1, len(edges) + 1, 1)
 
@@ -1095,8 +1114,11 @@ def main():
     edges = edges.loc[
         # ~(edges["highway"] == "cycleway") &
         # ~(edges["highway"] == "service")
-        ~(edges["highway"] == "cycleway")
+        ~((edges["highway"] == "service") & (edges["access"] == "no"))
+        & ~(edges["highway"] == "cycleway")
         ]
+
+    edges = edges[["osmid", "highway", "junction", "maxspeed", "oneway", "geometry"]]
     edges[known_speed_limit_column] = pd.to_numeric(edges[known_speed_limit_column])
 
     # ===============================
